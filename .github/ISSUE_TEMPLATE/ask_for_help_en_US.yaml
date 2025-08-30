@@ -22,7 +22,7 @@ body:
     attributes:
       label: Please check the checkboxes below.
       options:
-        - label: "I have read *[README.md](https://github.com/svc-develop-team/so-vits-svc/blob/4.0/README.md)* and *[Quick solution in wiki](https://github.com/svc-develop-team/so-vits-svc/wiki/Quick-solution)* carefully."
+        - label: "I have read *[README_old.md](https://github.com/svc-develop-team/so-vits-svc/blob/4.0/README_old.md)* and *[Quick solution in wiki](https://github.com/svc-develop-team/so-vits-svc/wiki/Quick-solution)* carefully."
           required: true
         - label: "I have been troubleshooting issues through various search engines. The questions I want to ask are not common."
           required: true

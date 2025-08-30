@@ -3,11 +3,11 @@ Flask
 Flask_Cors
 gradio>=3.7.0
 numpy==1.23.5
-pyworld
+pyworld==0.3.2
 scipy==1.10.0
 SoundFile==0.12.1
-torch
-torchaudio
+torch==2.7.1
+torchaudio==2.7.1
 torchcrepe
 tqdm
 rich

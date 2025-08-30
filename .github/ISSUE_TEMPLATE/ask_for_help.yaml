@@ -22,7 +22,7 @@ body:
     attributes:
       label: 请勾选下方的确认框。
       options:
-        - label: "我已仔细阅读[README.md](https://github.com/svc-develop-team/so-vits-svc/blob/4.0/README_zh_CN.md)和[wiki中的Quick solution](https://github.com/svc-develop-team/so-vits-svc/wiki/Quick-solution)。"
+        - label: "我已仔细阅读[README_old.md](https://github.com/svc-develop-team/so-vits-svc/blob/4.0/README_old_zh_CN.md)和[wiki中的Quick solution](https://github.com/svc-develop-team/so-vits-svc/wiki/Quick-solution)。"
           required: true
         - label: "我已通过各种搜索引擎排查问题，我要提出的问题并不常见。"
           required: true
