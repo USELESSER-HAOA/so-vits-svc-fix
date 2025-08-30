@@ -18,6 +18,15 @@ import utils
 from diffusion.vocoder import Vocoder
 from modules.mel_processing import spectrogram_torch
 
+_original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_torch_load(*args, **kwargs)
+
+# 应用替换
+torch.load = patched_torch_load
+
 logging.getLogger("numba").setLevel(logging.WARNING)
 logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
