@@ -181,6 +181,7 @@ python train_diff.py -c configs/diffusion.yaml
 During training, the model files will be saved to `logs/44k`, and the diffusion model will be saved to `logs/44k/diffusion`
 
 # Future Plan
-1. Fix this inhumane WebUI.
-2. Add more precise control over model training.
-3. Support Intel NPU and AMD GPUs (No way, Intel GPUs will never be supported under any circumstances.Also,AMD GPUs may could only be used under wsl or pure Linux env) .
+1. Support Colab.
+2. Fix this inhumane WebUI.
+3. Add more precise control over model training.
+4. Support AMD GPUs (No way, Intel GPUs will never be supported under any circumstances.Also,AMD GPUs may could only be used under wsl or pure Linux env) .
