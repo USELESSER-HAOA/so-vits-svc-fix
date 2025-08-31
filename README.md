@@ -9,6 +9,7 @@
 1. Supported NVIDIA 50-series GPUs.
 2. Badly support to Gloo on the Windows.
 3. Upgraded the Python version to 3.10.6.
+4. Supported Ascend NPU training (Errors may exist).
 
 # How to use
 
@@ -29,11 +30,32 @@ source .venv/bin/activate
 ```shell
 python -m pip install -r requirements.txt
 ```
-- Setup a torch env (Only for 50-series GPUs) :
+- Setup torch env (For 50-series GPUs) :
+
+- - (Only for Windows) Download the Microsoft VC 14.0 installer, then install the first and second sub-items under C++ Desktop Development.
+
+- - Then install the env automatically :
 ```shell
-# For 50-series GPUs
-pip3 install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
+    # Then run such commands
+    python -m pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url https://download.pytorch.org/whl/cu128
 ```
+
+- Setup torch env (For Ascend Card) :
+- - Verify that the Ascend firmware and drivers are properly installed.
+    ```shell
+    # Check the NPU state
+    npu-smi info
+    # Run a sample model to check if OPP Module installed successfully
+    atc --singleop=acl_op.json --soc_version=Ascend910 --output=op_model
+    ```
+- - If Ascend Card run well,then set up env automatically:
+   ```shell
+   python -m pip install -r requirements_ascend.txt
+   ```
+  It is recommended to use the Aliyun PyPI mirror to get torch_npu Module.
+  ```shell
+  python -m pip install -r requirements_ascend.txt -i https://mirrors.aliyun.com/pypi/simple/
+  ```
 ## 3.Start train
 #### The following section is from the original README file.
 ### Preprocessing

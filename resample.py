@@ -72,6 +72,8 @@ def process_all_speakers():
 """
 # multi process
 
+def file_exist_check(path):
+    return os.path.isdir(path)
 
 def process_all_speakers():
     process_count = 30 if os.cpu_count() > 60 else (os.cpu_count() - 2 if os.cpu_count() > 4 else 1)
@@ -94,5 +96,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     print(f"CPU count: {cpu_count()}")
-    speakers = os.listdir(args.in_dir)
-    process_all_speakers()
+    if not file_exist_check("./dataset_raw"):
+        print("ERROR: dataset_raw is empty")
+    else:
+        speakers = os.listdir(args.in_dir)
+        process_all_speakers()

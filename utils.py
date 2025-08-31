@@ -17,6 +17,30 @@ from scipy.io.wavfile import read
 from sklearn.cluster import MiniBatchKMeans
 from torch.nn import functional as F
 
+_original_torch_load = torch.load
+
+def patched_torch_load(*args, **kwargs):
+    kwargs.setdefault("weights_only", False)
+    return _original_torch_load(*args, **kwargs)
+
+def is_npu_available():
+    try:
+        import torch_npu
+        return torch_npu.npu.is_available()
+    except ImportError:
+        return False
+
+def get_device():
+    if is_npu_available():
+        import torch_npu
+        device = torch_npu.npu.current_device()
+        print(f"[INFO] NPU: {device}")
+        return torch_npu.npu
+    elif torch.cuda.is_available():
+        device = torch.device("cuda")
+        print(f"[INFO] GPU: {torch.cuda.get_device_name(device)}")
+        return device
+
 MATPLOTLIB_FLAG = False
 
 logging.basicConfig(stream=sys.stdout, level=logging.WARN)

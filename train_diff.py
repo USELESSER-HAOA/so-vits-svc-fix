@@ -1,7 +1,4 @@
-import argparse
-
-import torch
-from loguru import logger
+from functools import partial
 from torch.optim import lr_scheduler
 
 from diffusion.data_loaders import get_data_loaders
@@ -9,7 +6,10 @@ from diffusion.logger import utils
 from diffusion.solver import train
 from diffusion.unit2mel import Unit2Mel
 from diffusion.vocoder import Vocoder
+from utils import *
 
+torch.load = partial(patched_torch_load,)
+device = get_device()
 
 def parse_args(args=None, namespace=None):
     """Parse command-line arguments."""

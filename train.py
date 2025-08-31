@@ -21,6 +21,7 @@ from models import (
 )
 from modules.losses import discriminator_loss, feature_loss, generator_loss, kl_loss
 from modules.mel_processing import mel_spectrogram_torch, spec_to_mel_torch
+from utils import *
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger('numba').setLevel(logging.WARNING)
@@ -31,10 +32,11 @@ start_time = time.time()
 
 # os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'INFO'
 
+torch.load = patched_torch_load
+device = get_device()
 
 def main():
     """Assume Single Node Multi GPUs Training Only"""
-    assert torch.cuda.is_available(), "CPU training is not allowed."
     hps = utils.get_hparams()
 
     n_gpus = torch.cuda.device_count()

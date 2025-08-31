@@ -6,9 +6,10 @@ numpy==1.23.5
 pyworld==0.3.2
 scipy==1.10.0
 SoundFile==0.12.1
-torch==2.7.1
-torchaudio==2.7.1
-torchvision==0.22.1
+torch==2.4.0
+torchaudio==2.4.0
+torch_npu==2.4.0
+torchvision
 torchcrepe
 tqdm
 rich
@@ -25,7 +26,7 @@ tensorboardX
 transformers
 edge_tts
 langdetect
-pyyaml
+pyyaml==6.0.1
 pynvml
 faiss-cpu
 einops
