@@ -51,7 +51,7 @@ python -m pip install -r requirements.txt
 - - If Ascend Card run well,then set up env automatically:
    ```shell
    python -m pip install -r requirements_ascend.txt
-   ```
+    ```
   It is recommended to use the Aliyun PyPI mirror to get torch_npu Module.
   ```shell
   python -m pip install -r requirements_ascend.txt -i https://mirrors.aliyun.com/pypi/simple/
