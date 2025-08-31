@@ -34,11 +34,9 @@ def get_device():
     if is_npu_available():
         import torch_npu
         device = torch_npu.npu.current_device()
-        print(f"[INFO] NPU: {device}")
         return torch_npu.npu
     elif torch.cuda.is_available():
         device = torch.device("cuda")
-        print(f"[INFO] GPU: {torch.cuda.get_device_name(device)}")
         return device
 
 MATPLOTLIB_FLAG = False
