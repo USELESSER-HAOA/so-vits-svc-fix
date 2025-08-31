@@ -6,6 +6,7 @@ numpy==1.23.5
 pyworld==0.3.2
 scipy==1.10.0
 SoundFile==0.12.1
+protobuf>=3.13.0
 torch==2.4.0
 torchaudio==2.4.0
 torch_npu==2.4.0
@@ -16,6 +17,8 @@ rich
 loguru
 scikit-maad
 praat-parselmouth
+cffi>=1.12.3
+attrs
 onnx
 onnxsim
 onnxoptimizer
