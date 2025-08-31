@@ -9,7 +9,7 @@
 1. Supported NVIDIA 50-series GPUs.
 2. Badly support to Gloo on the Windows.
 3. Upgraded the Python version to 3.10.6.
-4. Supported Ascend NPU training (Errors may exist).
+4. Supported Ascend NPU training (Some Warnings & Not High Performance).
 
 # How to use
 
@@ -189,7 +189,10 @@ After completing the above steps, the dataset directory will contain the preproc
 #### Sovits Model
 
 ```shell
+# For NVIDIA
 python train.py -c configs/config.json -m 44k
+# For Ascend
+python train_ascend.py -c configs/config.json -m 44k
 ```
 
 #### Diffusion Model (optional)
@@ -197,7 +200,10 @@ python train.py -c configs/config.json -m 44k
 If the shallow diffusion function is needed, the diffusion model needs to be trained. The diffusion model training method is as follows:
 
 ```shell
+# For NVIDIA
 python train_diff.py -c configs/diffusion.yaml
+# For Ascend
+# This part has not been completed yet.
 ```
 
 During training, the model files will be saved to `logs/44k`, and the diffusion model will be saved to `logs/44k/diffusion`

@@ -114,27 +114,6 @@ def process_batch(file_chunk, f0p, diff=False, mel_extractor=None, device="cpu")
         gpu_id = rank % torch.cuda.device_count()
         device = torch.device(f"cuda:{gpu_id}")"""
 
-    def is_npu_available():
-        try:
-            import torch_npu
-            return torch_npu.npu.is_available()
-        except ImportError:
-            return False
-
-    def get_device():
-        if is_npu_available():
-            import torch_npu
-            device = torch_npu.npu.current_device()
-            print(f"[INFO] 使用 NPU: {device}")
-            return torch_npu.npu
-        elif torch.cuda.is_available():
-            device = torch.device("cuda")
-            print(f"[INFO] 使用 GPU: {torch.cuda.get_device_name(device)}")
-            return device
-        else:
-            print("[INFO] 使用 CPU")
-            return torch.device("cpu")
-    device = get_device()
     logger.info(f"Rank {rank} uses device {device}")
     hmodel = utils.get_speech_encoder(speech_encoder, device=device)
     logger.info(f"Loaded speech encoder for rank {rank}")

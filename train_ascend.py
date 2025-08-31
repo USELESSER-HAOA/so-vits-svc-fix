@@ -1,6 +1,7 @@
 import multiprocessing
 import time
-
+import torch_npu
+from torch_npu.contrib import transfer_to_npu
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.cuda.amp import GradScaler, autocast
@@ -10,7 +11,7 @@ from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
 import modules.commons as commons
-import utils
+import utils_ascend as utils
 from data_utils import TextAudioCollate, TextAudioSpeakerLoader
 from models import (
     MultiPeriodDiscriminator,
@@ -18,7 +19,7 @@ from models import (
 )
 from modules.losses import discriminator_loss, feature_loss, generator_loss, kl_loss
 from modules.mel_processing import mel_spectrogram_torch, spec_to_mel_torch
-from utils import *
+from utils_ascend import *
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 logging.getLogger('numba').setLevel(logging.WARNING)
@@ -30,7 +31,6 @@ start_time = time.time()
 # os.environ['TORCH_DISTRIBUTED_DEBUG'] = 'INFO'
 
 torch.load = patched_torch_load
-device = get_device()
 
 def main():
     """Assume Single Node Multi GPUs Training Only"""
@@ -168,6 +168,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
                                                                                 spec_lengths=lengths,vol = volume)
 
             y_mel = commons.slice_segments(mel, ids_slice, hps.train.segment_size // hps.data.hop_length)
+            y_mel = y_mel.detach().clone().requires_grad_(False)
             y_hat_mel = mel_spectrogram_torch(
                 y_hat.squeeze(1),
                 hps.data.filter_length,
@@ -177,7 +178,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
                 hps.data.win_length,
                 hps.data.mel_fmin,
                 hps.data.mel_fmax
-            )
+            ).detach().clone()
             y = commons.slice_segments(y, ids_slice * hps.data.hop_length, hps.train.segment_size)  # slice
 
             # Discriminator

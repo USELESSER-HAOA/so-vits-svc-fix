@@ -1,4 +1,5 @@
 ffmpeg-python
+psutil
 Flask
 Flask_Cors
 gradio>=3.7.0
@@ -7,9 +8,9 @@ pyworld==0.3.2
 scipy==1.10.0
 SoundFile==0.12.1
 protobuf>=3.13.0
-torch==2.4.0
-torchaudio==2.4.0
-torch_npu==2.4.0
+torch==2.1.0
+torchaudio==2.1.0
+torch_npu==2.1.0
 torchvision
 torchcrepe
 tqdm
@@ -26,7 +27,7 @@ fairseq==0.12.2
 librosa==0.9.1
 tensorboard
 tensorboardX
-transformers
+transformers==4.33.0
 edge_tts
 langdetect
 pyyaml==6.0.1
