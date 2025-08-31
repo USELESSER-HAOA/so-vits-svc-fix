@@ -1,3 +1,4 @@
+torch-npu
 ffmpeg-python
 Flask
 Flask_Cors
