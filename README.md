@@ -45,8 +45,8 @@ python -m pip install -r requirements.txt
     ```shell
     # Check the NPU state
     npu-smi info
-    # Run a sample model to check if OPP Module installed successfully
-    atc --singleop=acl_op.json --soc_version=Ascend910 --output=op_model
+    # Check the OPP installation directory.
+    ls /usr/local/Ascend/ascend-toolkit/latest/opp/
     ```
 - - If Ascend Card run well,then set up env automatically:
    ```shell
