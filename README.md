@@ -203,7 +203,7 @@ If the shallow diffusion function is needed, the diffusion model needs to be tra
 # For NVIDIA
 python train_diff.py -c configs/diffusion.yaml
 # For Ascend
-# This part has not been completed yet.
+python train_diff_ascend.py -c configs/diffusion.yaml
 ```
 
 During training, the model files will be saved to `logs/44k`, and the diffusion model will be saved to `logs/44k/diffusion`
