@@ -30,3 +30,4 @@ pynvml
 faiss-cpu
 einops
 local_attention
+psutil

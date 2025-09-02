@@ -31,6 +31,7 @@ start_time = time.time()
 torch.load = patched_torch_load
 device = get_device()
 
+
 def main():
     """Assume Single Node Multi GPUs Training Only"""
     hps = utils.get_hparams()
@@ -50,13 +51,14 @@ def run(rank, n_gpus, hps):
         utils.check_git_hash(hps.model_dir)
         writer = SummaryWriter(log_dir=hps.model_dir)
         writer_eval = SummaryWriter(log_dir=os.path.join(hps.model_dir, "eval"))
-    
-    # for pytorch on win, backend use gloo    
-    dist.init_process_group(backend=  'gloo' if os.name == 'nt' else 'nccl', init_method='env://', world_size=n_gpus, rank=rank)
+
+    # for pytorch on win, backend use gloo
+    dist.init_process_group(backend='gloo' if os.name == 'nt' else 'nccl', init_method='env://', world_size=n_gpus,
+                            rank=rank)
     torch.manual_seed(hps.train.seed)
     torch.cuda.set_device(rank)
     collate_fn = TextAudioCollate()
-    all_in_mem = hps.train.all_in_mem   # If you have enough memory, turn on this option to avoid disk IO and speed up training.
+    all_in_mem = hps.train.all_in_mem  # If you have enough memory, turn on this option to avoid disk IO and speed up training.
     train_dataset = TextAudioSpeakerLoader(hps.data.training_files, hps, all_in_mem=all_in_mem)
     num_workers = 5 if multiprocessing.cpu_count() > 4 else multiprocessing.cpu_count()
     if all_in_mem:
@@ -64,7 +66,7 @@ def run(rank, n_gpus, hps):
     train_loader = DataLoader(train_dataset, num_workers=num_workers, shuffle=False, pin_memory=True,
                               batch_size=hps.train.batch_size, collate_fn=collate_fn)
     if rank == 0:
-        eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps, all_in_mem=all_in_mem,vol_aug = False)
+        eval_dataset = TextAudioSpeakerLoader(hps.data.validation_files, hps, all_in_mem=all_in_mem, vol_aug=False)
         eval_loader = DataLoader(eval_dataset, num_workers=1, shuffle=False,
                                  batch_size=1, pin_memory=False,
                                  drop_last=False, collate_fn=collate_fn)
@@ -94,9 +96,9 @@ def run(rank, n_gpus, hps):
         _, _, _, epoch_str = utils.load_checkpoint(utils.latest_checkpoint_path(hps.model_dir, "D_*.pth"), net_d,
                                                    optim_d, skip_optimizer)
         epoch_str = max(epoch_str, 1)
-        name=utils.latest_checkpoint_path(hps.model_dir, "D_*.pth")
-        global_step=int(name[name.rfind("_")+1:name.rfind(".")])+1
-        #global_step = (epoch_str - 1) * len(train_loader)
+        name = utils.latest_checkpoint_path(hps.model_dir, "D_*.pth")
+        global_step = int(name[name.rfind("_") + 1:name.rfind(".")]) + 1
+        # global_step = (epoch_str - 1) * len(train_loader)
     except Exception:
         print("load old checkpoint failed...")
         epoch_str = 1
@@ -137,8 +139,8 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
     train_loader, eval_loader = loaders
     if writers is not None:
         writer, writer_eval = writers
-    
-    half_type = torch.bfloat16 if hps.train.half_type=="bf16" else torch.float16
+
+    half_type = torch.bfloat16 if hps.train.half_type == "bf16" else torch.float16
 
     # train_loader.batch_sampler.set_epoch(epoch)
     global global_step
@@ -146,7 +148,7 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
     net_g.train()
     net_d.train()
     for batch_idx, items in enumerate(train_loader):
-        c, f0, spec, y, spk, lengths, uv,volume = items
+        c, f0, spec, y, spk, lengths, uv, volume = items
         g = spk.cuda(rank, non_blocking=True)
         spec, y = spec.cuda(rank, non_blocking=True), y.cuda(rank, non_blocking=True)
         c = c.cuda(rank, non_blocking=True)
@@ -160,11 +162,12 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
             hps.data.sampling_rate,
             hps.data.mel_fmin,
             hps.data.mel_fmax)
-        
+
         with autocast(enabled=hps.train.fp16_run, dtype=half_type):
             y_hat, ids_slice, z_mask, \
-            (z, z_p, m_p, logs_p, m_q, logs_q), pred_lf0, norm_lf0, lf0 = net_g(c, f0, uv, spec, g=g, c_lengths=lengths,
-                                                                                spec_lengths=lengths,vol = volume)
+                (z, z_p, m_p, logs_p, m_q, logs_q), pred_lf0, norm_lf0, lf0 = net_g(c, f0, uv, spec, g=g,
+                                                                                    c_lengths=lengths,
+                                                                                    spec_lengths=lengths, vol=volume)
 
             y_mel = commons.slice_segments(mel, ids_slice, hps.train.segment_size // hps.data.hop_length)
             y_hat_mel = mel_spectrogram_torch(
@@ -185,13 +188,12 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
             with autocast(enabled=False, dtype=half_type):
                 loss_disc, losses_disc_r, losses_disc_g = discriminator_loss(y_d_hat_r, y_d_hat_g)
                 loss_disc_all = loss_disc
-        
+
         optim_d.zero_grad()
         scaler.scale(loss_disc_all).backward()
         scaler.unscale_(optim_d)
         grad_norm_d = commons.clip_grad_value_(net_d.parameters(), None)
         scaler.step(optim_d)
-        
 
         with autocast(enabled=hps.train.fp16_run, dtype=half_type):
             # Generator
@@ -214,13 +216,14 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
             if global_step % hps.train.log_interval == 0:
                 lr = optim_g.param_groups[0]['lr']
                 losses = [loss_disc, loss_gen, loss_fm, loss_mel, loss_kl]
-                reference_loss=0
+                reference_loss = 0
                 for i in losses:
                     reference_loss += i
                 logger.info('Train Epoch: {} [{:.0f}%]'.format(
                     epoch,
                     100. * batch_idx / len(train_loader)))
-                logger.info(f"Losses: {[x.item() for x in losses]}, step: {global_step}, lr: {lr}, reference_loss: {reference_loss}")
+                logger.info(
+                    f"Losses: {[x.item() for x in losses]}, step: {global_step}, lr: {lr}, reference_loss: {reference_loss}")
 
                 scalar_dict = {"loss/g/total": loss_gen_all, "loss/d/total": loss_disc_all, "learning_rate": lr,
                                "grad_norm_d": grad_norm_d, "grad_norm_g": grad_norm_g}
@@ -239,9 +242,9 @@ def train_and_evaluate(rank, epoch, hps, nets, optims, schedulers, scaler, loade
                 if net_g.module.use_automatic_f0_prediction:
                     image_dict.update({
                         "all/lf0": utils.plot_data_to_numpy(lf0[0, 0, :].cpu().numpy(),
-                                                              pred_lf0[0, 0, :].detach().cpu().numpy()),
+                                                            pred_lf0[0, 0, :].detach().cpu().numpy()),
                         "all/norm_lf0": utils.plot_data_to_numpy(lf0[0, 0, :].cpu().numpy(),
-                                                                   norm_lf0[0, 0, :].detach().cpu().numpy())
+                                                                 norm_lf0[0, 0, :].detach().cpu().numpy())
                     })
 
                 utils.summarize(
@@ -277,12 +280,12 @@ def evaluate(hps, generator, eval_loader, writer_eval):
     audio_dict = {}
     with torch.no_grad():
         for batch_idx, items in enumerate(eval_loader):
-            c, f0, spec, y, spk, _, uv,volume = items
+            c, f0, spec, y, spk, _, uv, volume = items
             g = spk[:1].cuda(0)
             spec, y = spec[:1].cuda(0), y[:1].cuda(0)
             c = c[:1].cuda(0)
             f0 = f0[:1].cuda(0)
-            uv= uv[:1].cuda(0)
+            uv = uv[:1].cuda(0)
             if volume is not None:
                 volume = volume[:1].cuda(0)
             mel = spec_to_mel_torch(
@@ -292,7 +295,7 @@ def evaluate(hps, generator, eval_loader, writer_eval):
                 hps.data.sampling_rate,
                 hps.data.mel_fmin,
                 hps.data.mel_fmax)
-            y_hat,_ = generator.module.infer(c, f0, uv, g=g,vol = volume)
+            y_hat, _ = generator.module.infer(c, f0, uv, g=g, vol=volume)
 
             y_hat_mel = mel_spectrogram_torch(
                 y_hat.squeeze(1).float(),

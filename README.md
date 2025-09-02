@@ -10,6 +10,7 @@
 2. Badly support to Gloo on the Windows.
 3. Upgraded the Python version to 3.10.6.
 4. Supported Ascend NPU training (Some Warnings & Not High Performance).
+5. Fixed webUI (Training supported,infer coming soon).
 
 # How to use
 
@@ -56,7 +57,25 @@ python -m pip install -r requirements.txt
   ```shell
   python -m pip install -r requirements_ascend.txt -i https://mirrors.aliyun.com/pypi/simple/
   ```
-## 3.Start train
+  
+## 3-Alpha Start train with webUI
+### 3-Alpha.0 Upload Your Raw Dataset
+Upload the sliced audio files to dataset_raw (it is recommended that each audio slice be between 5 to 15 seconds long, and the file structure must comply with the requirements listed below).
+```Shell
+# Dataset Structure
+dataset_raw
+|_{Speaker_Name}
+   |_Voice0.wav
+   |_Voice1.wav
+   ...
+   |_Voice.wav
+```
+### 3-Alpha.1 Launch webUI
+```shell
+python webui.py
+```
+## 3-Alpha.2 Enjoying Easy webUI!
+## 3-Beta.Start train
 #### The following section is from the original README file.
 ### Preprocessing
 
@@ -210,6 +229,5 @@ During training, the model files will be saved to `logs/44k`, and the diffusion 
 
 # Future Plan
 1. Support Colab.
-2. Fix this inhumane WebUI.
-3. Add more precise control over model training.
-4. Support AMD GPUs (No way, Intel GPUs will never be supported under any circumstances.Also,AMD GPUs may could only be used under wsl or pure Linux env) .
+2. Add more precise control over model training.
+3. Support AMD GPUs (No way, Intel GPUs will never be supported under any circumstances.Also,AMD GPUs may could only be used under wsl or pure Linux env) .
