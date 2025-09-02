@@ -11,6 +11,16 @@ from collections import deque
 import logging
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
+import shutil
+import glob
+
+# Try to import soundfile, install if not available
+try:
+    import soundfile as sf
+except ImportError:
+    print("Installing soundfile...")
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "soundfile"])
+    import soundfile as sf
 
 try:
     import yaml
@@ -223,6 +233,8 @@ class TrainingManager:
                     log_message = f"[TRAIN_DIFF] {log_message}"
                 elif self.current_training_type == 'main':
                     log_message = f"[MAIN] {log_message}"
+                elif self.current_training_type == 'inference':
+                    log_message = f"[INFERENCE] {log_message}"
 
                 self.add_log(log_message)
 
@@ -297,6 +309,83 @@ class TrainingManager:
 
 
 training_manager = TrainingManager()
+
+
+def get_available_models():
+    """Get available model files"""
+    models = []
+    model_extensions = ['.pth', '.pt']
+
+    # Search in logs directory and subdirectories
+    for root, dirs, files in os.walk('./logs'):
+        for file in files:
+            if any(file.endswith(ext) for ext in model_extensions) and 'G_' in file:
+                models.append(os.path.join(root, file))
+
+    return sorted(models) if models else ["No models found"]
+
+
+def get_available_configs():
+    """Get available config files"""
+    configs = []
+
+    # Search for config.json files
+    if os.path.exists('./configs/config.json'):
+        configs.append('./configs/config.json')
+
+    # Search in logs directory for other configs
+    for root, dirs, files in os.walk('./logs'):
+        for file in files:
+            if file == 'config.json':
+                configs.append(os.path.join(root, file))
+
+    return sorted(configs) if configs else ["No config files found"]
+
+
+def get_available_diffusion_models():
+    """Get available diffusion model files"""
+    models = []
+
+    # Common diffusion model paths
+    diffusion_paths = [
+        './logs/44k/diffusion',
+        './logs/diffusion',
+        './diffusion',
+    ]
+
+    for path in diffusion_paths:
+        if os.path.exists(path):
+            for root, dirs, files in os.walk(path):
+                for file in files:
+                    if file.endswith('.pt') and ('model_' in file or 'diffusion_' in file):
+                        models.append(os.path.join(root, file))
+
+    return sorted(models) if models else ["No diffusion models found"]
+
+
+def get_available_diffusion_configs():
+    """Get available diffusion config files"""
+    configs = []
+
+    if os.path.exists('./configs/diffusion.yaml'):
+        configs.append('./configs/diffusion.yaml')
+
+    return sorted(configs) if configs else ["No diffusion config files found"]
+
+
+def get_speakers_from_config(config_path):
+    """Extract speaker list from config file"""
+    try:
+        if not config_path or not os.path.exists(config_path):
+            return ["No config selected"]
+
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        speakers = config.get('spk', {}).keys()
+        return list(speakers) if speakers else ["No speakers found in config"]
+    except Exception as e:
+        return [f"Error reading config: {str(e)}"]
 
 
 def check_dataset_structure(dataset_path):
@@ -481,6 +570,252 @@ def start_diff_training(use_ascend, progress=gr.Progress()):
     return "🚀 Diffusion model training started", training_manager.get_all_logs()
 
 
+def run_inference(
+        # Model settings
+        model_path, uploaded_model, config_path, uploaded_config,
+        # Audio settings
+        input_audio, uploaded_audio,
+        # Basic settings
+        trans, speaker,
+        # Advanced settings
+        clip_duration, linear_gradient, f0_predictor, auto_predict_f0,
+        # Diffusion settings
+        use_diffusion, diffusion_model_path, uploaded_diff_model,
+        diffusion_config_path, uploaded_diff_config, k_step, only_diffusion, second_encoding,
+        # Enhancement settings
+        enhance, cluster_model_path, cluster_infer_ratio, feature_retrieval,
+        # Mix settings
+        use_spk_mix, loudness_envelope_adjustment,
+        progress=gr.Progress()
+):
+    """Run voice conversion inference - 修正版本 with download support"""
+
+    training_manager.current_training_type = 'inference'
+    training_manager.add_log("🎤 Starting voice conversion inference...")
+
+    # Ensure raw directory exists
+    os.makedirs("raw", exist_ok=True)
+    os.makedirs("results", exist_ok=True)
+
+    # Handle model file
+    final_model_path = model_path
+    if uploaded_model and uploaded_model.name:
+        final_model_path = uploaded_model.name
+        training_manager.add_log(f"Using uploaded model: {os.path.basename(uploaded_model.name)}")
+
+    # Handle config file
+    final_config_path = config_path
+    if uploaded_config and uploaded_config.name:
+        final_config_path = uploaded_config.name
+        training_manager.add_log(f"Using uploaded config: {os.path.basename(uploaded_config.name)}")
+
+    # Handle input audio
+    input_audio_path = None
+    if uploaded_audio and uploaded_audio.name:
+        # Copy uploaded audio to raw directory
+        audio_filename = os.path.basename(uploaded_audio.name)
+        input_audio_path = os.path.join("raw", audio_filename)
+        shutil.copy(uploaded_audio.name, input_audio_path)
+        training_manager.add_log(f"Using uploaded audio: {audio_filename}")
+    elif input_audio:
+        # Handle recorded audio
+        audio_filename = "recorded_audio.wav"
+        input_audio_path = os.path.join("raw", audio_filename)
+        # Save recorded audio
+        import soundfile as sf
+        sf.write(input_audio_path, input_audio[1], input_audio[0])
+        training_manager.add_log(f"Using recorded audio saved as: {audio_filename}")
+
+    if not input_audio_path or not os.path.exists(input_audio_path):
+        error_msg = "❌ No input audio provided"
+        training_manager.add_log(error_msg)
+        return None, gr.File(visible=False), error_msg
+
+    # Validation
+    if not final_model_path or final_model_path == "No models found" or not os.path.exists(final_model_path):
+        error_msg = "❌ Model file not found"
+        training_manager.add_log(error_msg)
+        return None, gr.File(visible=False), error_msg
+
+    if not final_config_path or final_config_path == "No config files found" or not os.path.exists(final_config_path):
+        error_msg = "❌ Config file not found"
+        training_manager.add_log(error_msg)
+        return None, gr.File(visible=False), error_msg
+
+    # Build inference command
+    audio_name = os.path.splitext(os.path.basename(input_audio_path))[0]
+
+    cmd = f'python inference_main.py -m "{final_model_path}" -c "{final_config_path}" -n "{audio_name}" -t {trans} -s "{speaker}"'
+
+    # Add advanced parameters
+    if clip_duration > 0:
+        cmd += f" -cl {clip_duration}"
+    if linear_gradient > 0:
+        cmd += f" -lg {linear_gradient}"
+    if f0_predictor != "pm":
+        cmd += f" -f0p {f0_predictor}"
+    if auto_predict_f0:
+        cmd += " -a"
+
+    # Enhancement settings
+    if enhance:
+        cmd += " -eh"
+    if cluster_model_path and cluster_model_path.strip():
+        cmd += f' -cm "{cluster_model_path}"'
+        if cluster_infer_ratio > 0:
+            cmd += f" -cr {cluster_infer_ratio}"
+    if feature_retrieval:
+        cmd += " -fr"
+
+    # Speaker mixing settings
+    if use_spk_mix:
+        cmd += " -usm"
+    if loudness_envelope_adjustment < 1.0:
+        cmd += f" -lea {loudness_envelope_adjustment}"
+
+    # Force output format to wav for better webui compatibility
+    cmd += " -wf wav"
+
+    # Diffusion settings
+    if use_diffusion:
+        # Handle diffusion model path
+        final_diffusion_model_path = diffusion_model_path
+        if uploaded_diff_model and uploaded_diff_model.name:
+            final_diffusion_model_path = uploaded_diff_model.name
+            training_manager.add_log(f"Using uploaded diffusion model: {os.path.basename(uploaded_diff_model.name)}")
+
+        # Handle diffusion config path
+        final_diffusion_config_path = diffusion_config_path
+        if uploaded_diff_config and uploaded_diff_config.name:
+            final_diffusion_config_path = uploaded_diff_config.name
+            training_manager.add_log(f"Using uploaded diffusion config: {os.path.basename(uploaded_diff_config.name)}")
+
+        if final_diffusion_model_path and final_diffusion_model_path != "No diffusion models found" and os.path.exists(
+                final_diffusion_model_path):
+            cmd += f' -dm "{final_diffusion_model_path}"'
+
+        if final_diffusion_config_path and final_diffusion_config_path != "No diffusion config files found" and os.path.exists(
+                final_diffusion_config_path):
+            cmd += f' -dc "{final_diffusion_config_path}"'
+
+        cmd += " -shd"  # Enable shallow diffusion
+        cmd += f" -ks {k_step}"
+
+        if only_diffusion:
+            cmd += " -od"
+        if second_encoding:
+            cmd += " -se"
+
+    # Special handling for whisper-ppg encoder
+    try:
+        with open(final_config_path, 'r') as f:
+            config = json.load(f)
+            speech_encoder = config.get('model', {}).get('speech_encoder', '')
+            if 'whisper-ppg' in speech_encoder:
+                cmd += " -cl 25 -lg 1"
+                training_manager.add_log(
+                    "🎵 Detected whisper-ppg encoder, using recommended settings (clip=25, linear_gradient=1)")
+    except:
+        pass
+
+    training_manager.add_log(f"🎯 Inference parameters configured:")
+    training_manager.add_log(f"   Model: {os.path.basename(final_model_path)}")
+    training_manager.add_log(f"   Config: {os.path.basename(final_config_path)}")
+    training_manager.add_log(f"   Audio: {os.path.basename(input_audio_path)}")
+    training_manager.add_log(f"   Speaker: {speaker}")
+    training_manager.add_log(f"   Pitch shift: {trans}")
+    if use_diffusion:
+        training_manager.add_log(f"   Using diffusion model with {k_step} steps")
+
+    # Run inference
+    def inference_thread():
+        nonlocal cmd
+        success = training_manager.run_command(cmd)
+        training_manager.current_training_type = None
+        return success
+
+    # Run inference in thread for better UI responsiveness
+    success = inference_thread()
+
+    if success:
+        # Construct expected filename based on inference_main.py logic
+        # Format: {clean_name}_{key}_{spk}{cluster_name}_{isdiffusion}_{f0p}.{wav_format}
+
+        # Determine key
+        key = "auto" if auto_predict_f0 else f"{trans}key"
+
+        # Determine cluster name
+        cluster_name = "" if cluster_infer_ratio == 0 else f"_{cluster_infer_ratio}"
+
+        # Determine diffusion type
+        isdiffusion = "sovits"
+        if use_diffusion:
+            if only_diffusion:
+                isdiffusion = "diff"
+            else:
+                isdiffusion = "sovdiff"
+
+        # Determine speaker name
+        final_speaker = "spk_mix" if use_spk_mix else speaker
+
+        # Construct expected filename
+        expected_filename = f"{audio_name}_{key}_{final_speaker}{cluster_name}_{isdiffusion}_{f0_predictor}.wav"
+        expected_filepath = os.path.join("results", expected_filename)
+
+        training_manager.add_log(f"🔍 Looking for output file: {expected_filename}")
+
+        # First try the exact expected path
+        if os.path.exists(expected_filepath):
+            training_manager.add_log(f"✅ Found output file: {expected_filename}")
+            training_manager.add_log(f"📥 File available for download: {expected_filename}")
+            return expected_filepath, gr.File(value=expected_filepath,
+                                              visible=True), f"✅ Voice conversion completed! Output: {expected_filename}"
+
+        # If not found, try pattern matching for more flexibility
+        results_dir = "results"
+
+        # Build multiple possible patterns
+        patterns = [
+            f"{audio_name}_*_{final_speaker}*_{isdiffusion}_{f0_predictor}.wav",
+            f"{audio_name}_*_{final_speaker}*_{isdiffusion}_*.wav",
+            f"{audio_name}_*_{final_speaker}*.wav",
+            f"{audio_name}_*.wav"
+        ]
+
+        output_files = []
+        for pattern in patterns:
+            pattern_files = glob.glob(os.path.join(results_dir, pattern))
+            if pattern_files:
+                output_files.extend(pattern_files)
+                training_manager.add_log(
+                    f"📁 Found files with pattern '{pattern}': {[os.path.basename(f) for f in pattern_files]}")
+                break
+
+        if output_files:
+            # Sort by modification time, get the newest one
+            output_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            output_file = output_files[0]
+            training_manager.add_log(f"🎵 Using output file: {os.path.basename(output_file)}")
+            training_manager.add_log(f"📥 File available for download: {os.path.basename(output_file)}")
+            return output_file, gr.File(value=output_file,
+                                        visible=True), f"✅ Voice conversion completed! Output: {os.path.basename(output_file)}"
+
+        # If still not found, list all files in results directory for debugging
+        try:
+            all_files = os.listdir(results_dir)
+            training_manager.add_log(f"📂 All files in results directory: {all_files}")
+        except:
+            pass
+
+        error_msg = f"⚠️ Voice conversion completed but output file not found. Expected: {expected_filename}"
+        training_manager.add_log(error_msg)
+        return None, gr.File(visible=False), error_msg
+    else:
+        error_msg = "❌ Voice conversion failed"
+        training_manager.add_log(error_msg)
+        return None, gr.File(visible=False), error_msg
+
+
 def stop_training():
     """Stop training"""
     if not training_manager.is_training:
@@ -514,7 +849,7 @@ def update_logs_with_scroll():
     if log_count > 0:
         # Output debug info to browser console
         print(f"[DEBUG] Updating logs: {log_count} total logs")
-    return logs, logs, logs  # Return to three different log display areas
+    return logs, logs, logs, logs  # Return to four different log display areas
 
 
 def force_update_diff_logs():
@@ -547,7 +882,8 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     1. **Data Preparation**: Put audio files into `dataset_raw/speaker_name/` folders
     2. **Preprocessing**: Execute in order: Resample → Generate Config → Extract Features
     3. **Training**: Configure parameters and start training
-    4. **Monitoring**: View real-time logs to understand training progress
+    4. **Inference**: Use trained models for voice conversion
+    5. **Monitoring**: View real-time logs to understand training progress
     """)
 
     with gr.Tabs():
@@ -764,10 +1100,268 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 info="Shows complete diffusion model training logs, including directly captured saver.py and solver.py output"
             )
 
+        # Inference tab
+        with gr.TabItem("🎤 Voice Conversion Inference"):
+            gr.Markdown("""
+            ### Voice Conversion Inference
+            Use your trained models to convert voices. Supports both main model and diffusion model inference.
+            """)
+
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### 🎯 Model Selection")
+
+                    # Model settings
+                    with gr.Group():
+                        gr.Markdown("**Main Model**")
+                        inf_model_path = gr.Dropdown(
+                            label="Main Model Path",
+                            choices=get_available_models(),
+                            value=get_available_models()[0] if get_available_models()[0] != "No models found" else None,
+                            info="Select trained model file",
+                            allow_custom_value=True
+                        )
+                        inf_uploaded_model = gr.File(
+                            label="Or Upload Model File (.pth/.pt)",
+                            file_types=[".pth", ".pt"]
+                        )
+
+                        inf_config_path = gr.Dropdown(
+                            label="Config Path",
+                            choices=get_available_configs(),
+                            value=get_available_configs()[0] if get_available_configs()[
+                                                                    0] != "No config files found" else None,
+                            info="Select config.json file"
+                        )
+                        inf_uploaded_config = gr.File(
+                            label="Or Upload Config File (.json)",
+                            file_types=[".json"]
+                        )
+
+                    # Refresh model lists
+                    refresh_models_btn = gr.Button("🔄 Refresh Model Lists", variant="secondary")
+
+                with gr.Column():
+                    gr.Markdown("#### 🎵 Audio Input")
+
+                    # Audio input
+                    with gr.Group():
+                        inf_input_audio = gr.Audio(
+                            label="Record Audio",
+                            sources=["microphone"],
+                            type="numpy",
+                        )
+                        inf_uploaded_audio = gr.File(
+                            label="Or Upload Audio File (.wav/.mp3/.flac)",
+                            file_types=[".wav", ".mp3", ".flac"]
+                        )
+
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### ⚙️ Basic Settings")
+
+                    # Basic settings
+                    inf_trans = gr.Slider(
+                        label="Pitch Shift (semitones)",
+                        minimum=-24,
+                        maximum=24,
+                        value=0,
+                        step=1,
+                        info="Positive for higher pitch, negative for lower pitch"
+                    )
+
+                    inf_speaker = gr.Dropdown(
+                        label="Target Speaker",
+                        choices=get_speakers_from_config(get_available_configs()[0] if get_available_configs()[
+                                                                                           0] != "No config files found" else None),
+                        info="Select target speaker for conversion"
+                    )
+
+                    inf_clip_duration = gr.Slider(
+                        label="Clip Duration (seconds)",
+                        minimum=0,
+                        maximum=60,
+                        value=0,
+                        step=1,
+                        info="0 for automatic slicing, >0 for forced slicing"
+                    )
+
+                with gr.Column():
+                    gr.Markdown("#### 🔧 Advanced Settings")
+
+                    inf_linear_gradient = gr.Slider(
+                        label="Linear Gradient (seconds)",
+                        minimum=0,
+                        maximum=5,
+                        value=0,
+                        step=0.1,
+                        info="Cross-fade length for audio segments"
+                    )
+
+                    inf_f0_predictor = gr.Dropdown(
+                        label="F0 Predictor",
+                        choices=["pm", "crepe", "dio", "harvest", "rmvpe", "fcpe"],
+                        value="rmvpe",
+                        info="F0 prediction method"
+                    )
+
+                    inf_auto_predict_f0 = gr.Checkbox(
+                        label="Auto Predict F0",
+                        value=False,
+                        info="⚠️ Don't use for singing voice conversion"
+                    )
+
+            # Diffusion model settings
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### 🌊 Diffusion Model Settings")
+
+                    inf_use_diffusion = gr.Checkbox(
+                        label="Use Diffusion Model",
+                        value=True,
+                        info="Enable diffusion model for better quality"
+                    )
+
+                    with gr.Group():
+                        inf_diffusion_model_path = gr.Dropdown(
+                            label="Diffusion Model Path",
+                            choices=get_available_diffusion_models(),
+                            value=get_available_diffusion_models()[0] if get_available_diffusion_models()[
+                                                                             0] != "No diffusion models found" else None,
+                            info="Select diffusion model file"
+                        )
+                        inf_uploaded_diff_model = gr.File(
+                            label="Or Upload Diffusion Model (.pt)",
+                            file_types=[".pt"]
+                        )
+
+                        inf_diffusion_config_path = gr.Dropdown(
+                            label="Diffusion Config Path",
+                            choices=get_available_diffusion_configs(),
+                            value=get_available_diffusion_configs()[0] if get_available_diffusion_configs()[
+                                                                              0] != "No diffusion config files found" else None,
+                            info="Select diffusion config file"
+                        )
+                        inf_uploaded_diff_config = gr.File(
+                            label="Or Upload Diffusion Config (.yaml/.yml)",
+                            file_types=[".yaml", ".yml"]
+                        )
+
+                with gr.Column():
+                    gr.Markdown("#### 🎛️ Diffusion Parameters")
+
+                    inf_k_step = gr.Slider(
+                        label="Diffusion Steps",
+                        minimum=1,
+                        maximum=1000,
+                        value=100,
+                        step=1,
+                        info="Higher values = better quality but slower"
+                    )
+
+                    inf_only_diffusion = gr.Checkbox(
+                        label="Only Diffusion Mode",
+                        value=False,
+                        info="Use only diffusion model without main model"
+                    )
+
+                    inf_second_encoding = gr.Checkbox(
+                        label="Second Encoding",
+                        value=False,
+                        info="Re-encode audio before diffusion (experimental)"
+                    )
+
+            # Enhancement and mixing settings
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### 🔊 Enhancement Settings")
+
+                    inf_enhance = gr.Checkbox(
+                        label="NSF-HiFiGAN Enhancement",
+                        value=False,
+                        info="May improve quality for small datasets"
+                    )
+
+                    inf_cluster_model_path = gr.Textbox(
+                        label="Cluster Model Path",
+                        placeholder="Path to cluster model or feature retrieval index",
+                        info="Leave empty for auto-detection"
+                    )
+
+                    inf_cluster_infer_ratio = gr.Slider(
+                        label="Cluster Inference Ratio",
+                        minimum=0,
+                        maximum=1,
+                        value=0,
+                        step=0.01,
+                        info="Blend ratio for clustering/retrieval"
+                    )
+
+                    inf_feature_retrieval = gr.Checkbox(
+                        label="Feature Retrieval",
+                        value=False,
+                        info="Use feature retrieval (disables clustering)"
+                    )
+
+                with gr.Column():
+                    gr.Markdown("#### 🎚️ Mixing Settings")
+
+                    inf_use_spk_mix = gr.Checkbox(
+                        label="Speaker Mixing",
+                        value=False,
+                        info="Enable dynamic speaker mixing"
+                    )
+
+                    inf_loudness_envelope_adjustment = gr.Slider(
+                        label="Loudness Envelope Adjustment",
+                        minimum=0,
+                        maximum=1,
+                        value=1.0,
+                        step=0.01,
+                        info="1.0 = use output envelope, 0.0 = use input envelope"
+                    )
+
+            # Inference controls
+            gr.Markdown("---")
+            with gr.Row():
+                inference_btn = gr.Button("🚀 Start Voice Conversion", variant="primary", scale=3)
+                stop_inference_btn = gr.Button("⏹️ Stop", variant="stop", scale=1)
+
+            inference_status = gr.Textbox(label="Inference Status", interactive=False)
+
+            # Output audio with download option
+            with gr.Row():
+                with gr.Column():
+                    output_audio = gr.Audio(
+                        label="Converted Audio - Preview",
+                        interactive=False,
+                    )
+                with gr.Column():
+                    output_download = gr.File(
+                        label="Download Converted Audio",
+                        interactive=False,
+                        visible=False
+                    )
+
+            # Inference logs
+            gr.Markdown("### 📊 Inference Logs")
+            with gr.Row():
+                inference_refresh_btn = gr.Button("🔄 Refresh Logs", scale=1)
+                inference_clear_btn = gr.Button("🗑️ Clear Logs", scale=1, variant="secondary")
+
+            inference_log_display = gr.Textbox(
+                label="Voice Conversion Logs",
+                lines=15,
+                max_lines=20,
+                interactive=False,
+                elem_id="inference_log_display",
+                info="Shows real-time logs for voice conversion process"
+            )
+
     # Bind event handlers - add scroll JS
     scroll_js = """
     setTimeout(() => {
-        ['preprocess_log_display', 'train_log_display', 'diff_log_display'].forEach(id => {
+        ['preprocess_log_display', 'train_log_display', 'diff_log_display', 'inference_log_display'].forEach(id => {
             const textarea = document.querySelector('#' + id + ' textarea');
             if (textarea) {
                 textarea.scrollTop = textarea.scrollHeight;
@@ -850,6 +1444,57 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         js=scroll_js
     )
 
+
+    # Inference related events
+    def refresh_all_lists():
+        return (
+            gr.Dropdown(choices=get_available_models(),
+                        value=get_available_models()[0] if get_available_models()[0] != "No models found" else None),
+            gr.Dropdown(choices=get_available_configs(), value=get_available_configs()[0] if get_available_configs()[
+                                                                                                 0] != "No config files found" else None),
+            gr.Dropdown(choices=get_available_diffusion_models(),
+                        value=get_available_diffusion_models()[0] if get_available_diffusion_models()[
+                                                                         0] != "No diffusion models found" else None),
+            gr.Dropdown(choices=get_available_diffusion_configs(),
+                        value=get_available_diffusion_configs()[0] if get_available_diffusion_configs()[
+                                                                          0] != "No diffusion config files found" else None)
+        )
+
+
+    refresh_models_btn.click(
+        refresh_all_lists,
+        outputs=[inf_model_path, inf_config_path, inf_diffusion_model_path, inf_diffusion_config_path]
+    )
+
+
+    # Update speaker list when config changes
+    def update_speakers(config_path):
+        return gr.Dropdown(choices=get_speakers_from_config(config_path))
+
+
+    inf_config_path.change(
+        update_speakers,
+        inputs=[inf_config_path],
+        outputs=[inf_speaker]
+    )
+
+    # Main inference function - 使用修正后的版本
+    inference_btn.click(
+        run_inference,
+        inputs=[
+            inf_model_path, inf_uploaded_model, inf_config_path, inf_uploaded_config,
+            inf_input_audio, inf_uploaded_audio,
+            inf_trans, inf_speaker,
+            inf_clip_duration, inf_linear_gradient, inf_f0_predictor, inf_auto_predict_f0,
+            inf_use_diffusion, inf_diffusion_model_path, inf_uploaded_diff_model,
+            inf_diffusion_config_path, inf_uploaded_diff_config, inf_k_step, inf_only_diffusion, inf_second_encoding,
+            inf_enhance, inf_cluster_model_path, inf_cluster_infer_ratio, inf_feature_retrieval,
+            inf_use_spk_mix, inf_loudness_envelope_adjustment
+        ],
+        outputs=[output_audio, output_download, inference_status],
+        js=scroll_js
+    )
+
     # Log refresh and clear events - handle different areas separately
     preprocess_refresh_btn.click(
         lambda: training_manager.get_all_logs(),
@@ -881,11 +1526,21 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         outputs=[diff_log_display]
     )
 
+    inference_refresh_btn.click(
+        lambda: training_manager.get_all_logs(),
+        outputs=[inference_log_display],
+        js="setTimeout(() => { const textarea = document.querySelector('#inference_log_display textarea'); if (textarea) textarea.scrollTop = textarea.scrollHeight; }, 200)"
+    )
+    inference_clear_btn.click(
+        lambda: (training_manager.clear_logs(), "")[1],
+        outputs=[inference_log_display]
+    )
+
     # Timer to update all log display areas
     log_timer = gr.Timer(value=0.8, active=True)
     log_timer.tick(
         update_logs_with_scroll,
-        outputs=[preprocess_log_display, train_log_display, diff_log_display],
+        outputs=[preprocess_log_display, train_log_display, diff_log_display, inference_log_display],
         js=scroll_js
     )
 
@@ -913,7 +1568,8 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     app.css = """
     #preprocess_log_display textarea, 
     #train_log_display textarea, 
-    #diff_log_display textarea {
+    #diff_log_display textarea,
+    #inference_log_display textarea {
         font-family: monospace;
         font-size: 12px;
         background-color: #1e1e1e;
@@ -933,6 +1589,8 @@ if __name__ == "__main__":
     os.makedirs("dataset/44k", exist_ok=True)
     os.makedirs("configs", exist_ok=True)
     os.makedirs("logs", exist_ok=True)
+    os.makedirs("raw", exist_ok=True)
+    os.makedirs("results", exist_ok=True)
 
     # Launch WebUI
     app.launch(

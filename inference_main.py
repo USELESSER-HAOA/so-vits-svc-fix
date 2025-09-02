@@ -9,7 +9,10 @@ from spkmix import spk_mix_map
 logging.getLogger('numba').setLevel(logging.WARNING)
 chunks_dict = infer_tool.read_temp("inference/chunks_temp.json")
 
+from utils import *
 
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+torch.load = patched_torch_load
 
 def main():
     import argparse

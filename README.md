@@ -12,7 +12,7 @@
 4. Supported Ascend NPU training (Some Warnings & Not High Performance).
 5. Fixed webUI (Training supported,infer coming soon).
 
-# How to use
+# Training
 
 ## 1.Follow the README_old.md in the project to get PreTrain model.
 ## 2.Setup Runtime:
@@ -74,7 +74,7 @@ dataset_raw
 ```shell
 python webui.py
 ```
-## 3-Alpha.2 Enjoying Easy webUI!
+### 3-Alpha.2 Enjoying Easy webUI!
 ## 3-Beta.Start train
 #### The following section is from the original README file.
 ### Preprocessing
@@ -214,7 +214,7 @@ python train.py -c configs/config.json -m 44k
 python train_ascend.py -c configs/config.json -m 44k
 ```
 
-#### Diffusion Model (optional)
+#### Diffusion Model
 
 If the shallow diffusion function is needed, the diffusion model needs to be trained. The diffusion model training method is as follows:
 
@@ -226,6 +226,57 @@ python train_diff_ascend.py -c configs/diffusion.yaml
 ```
 
 During training, the model files will be saved to `logs/44k`, and the diffusion model will be saved to `logs/44k/diffusion`
+
+# Infer
+## 1.Using webUI
+1. Using the web-based user interface for inference is recommended. 
+2. Upload or use a local file to initiate model inference.
+3. Using microphone or upload a file to infer.
+4. Enjoying this wonderful webUI!
+```shell
+python webui.py
+```
+## 2.Using CLI
+Using the command line is not recommended unless specifically required.
+#### Use [inference_main.py](https://github.com/svc-develop-team/so-vits-svc/blob/4.0/inference_main.py)
+
+```shell
+# Example
+python inference_main.py -m "logs/44k/G_30400.pth" -c "configs/config.json" -n "君の知らない物語-src.wav" -t 0 -s "nen"
+```
+
+Required parameters:
+- `-m` | `--model_path`: path to the model.
+- `-c` | `--config_path`: path to the configuration file.
+- `-n` | `--clean_names`: a list of wav file names located in the `raw` folder.
+- `-t` | `--trans`: pitch shift, supports positive and negative (semitone) values.
+- `-s` | `--spk_list`: Select the speaker ID to use for conversion.
+- `-cl` | `--clip`: Forced audio clipping, set to 0 to disable(default), setting it to a non-zero value (duration in seconds) to enable.
+
+Optional parameters: see the next section
+- `-lg` | `--linear_gradient`: The cross fade length of two audio slices in seconds. If there is a discontinuous voice after forced slicing, you can adjust this value. Otherwise, it is recommended to use the default value of 0.
+- `-f0p` | `--f0_predictor`: Select a F0 predictor, options are `crepe`, `pm`, `dio`, `harvest`, `rmvpe`,`fcpe`, default value is `pm`(note: f0 mean pooling will be enable when using `crepe`)
+- `-a` | `--auto_predict_f0`: automatic pitch prediction, do not enable this when converting singing voices as it can cause serious pitch issues.
+- `-cm` | `--cluster_model_path`: Cluster model or feature retrieval index path, if left blank, it will be automatically set as the default path of these models. If there is no training cluster or feature retrieval, fill in at will.
+- `-cr` | `--cluster_infer_ratio`: The proportion of clustering scheme or feature retrieval ranges from 0 to 1. If there is no training clustering model or feature retrieval, the default is 0.
+- `-eh` | `--enhance`: Whether to use NSF_HIFIGAN enhancer, this option has certain effect on sound quality enhancement for some models with few training sets, but has negative effect on well-trained models, so it is disabled by default.
+- `-shd` | `--shallow_diffusion`: Whether to use shallow diffusion, which can solve some electrical sound problems after use. This option is disabled by default. When this option is enabled, NSF_HIFIGAN enhancer will be disabled
+- `-usm` | `--use_spk_mix`: whether to use dynamic voice fusion
+- `-lea` | `--loudness_envelope_adjustment`：The adjustment of the input source's loudness envelope in relation to the fusion ratio of the output loudness envelope. The closer to 1, the more the output loudness envelope is used
+- `-fr` | `--feature_retrieval`：Whether to use feature retrieval If clustering model is used, it will be disabled, and `cm` and `cr` parameters will become the index path and mixing ratio of feature retrieval
+  
+Shallow diffusion settings:
+- `-dm` | `--diffusion_model_path`: Diffusion model path
+- `-dc` | `--diffusion_config_path`: Diffusion config file path
+- `-ks` | `--k_step`: The larger the number of k_steps, the closer it is to the result of the diffusion model. The default is 100
+- `-od` | `--only_diffusion`: Whether to use Only diffusion mode, which does not load the sovits model to only use diffusion model inference
+- `-se` | `--second_encoding`：which involves applying an additional encoding to the original audio before shallow diffusion. This option can yield varying results - sometimes positive and sometimes negative.
+
+### Cautions
+
+If inferencing using `whisper-ppg` speech encoder, you need to set `--clip` to 25 and `-lg` to 1. Otherwise it will fail to infer properly.
+
+
 
 # Future Plan
 1. Support Colab.

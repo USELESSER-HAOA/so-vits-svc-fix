@@ -8,7 +8,10 @@ import yaml
 from .diffusion import GaussianDiffusion
 from .vocoder import Vocoder
 from .wavenet import WaveNet
+from utils import patched_torch_load
 
+
+torch.load = patched_torch_load
 
 class DotDict(dict):
     def __getattr__(*args):         

@@ -13,7 +13,6 @@ import numpy as np
 
 # import onnxruntime
 import soundfile
-import torch
 import torchaudio
 
 import cluster
@@ -21,6 +20,10 @@ import utils
 from diffusion.unit2mel import load_model_vocoder
 from inference import slicer
 from models import SynthesizerTrn
+
+from utils import *
+
+torch.load = patched_torch_load
 
 logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
