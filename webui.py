@@ -14,7 +14,6 @@ from watchdog.events import FileSystemEventHandler
 import shutil
 import glob
 
-# Try to import soundfile, install if not available
 try:
     import soundfile as sf
 except ImportError:
@@ -40,8 +39,6 @@ except ImportError:
 
 
 class DiffusionLogHandler(FileSystemEventHandler):
-    """Handler for monitoring diffusion model related log files"""
-
     def __init__(self, training_manager):
         self.training_manager = training_manager
         self.monitored_files = {}
@@ -55,7 +52,6 @@ class DiffusionLogHandler(FileSystemEventHandler):
             self._read_log_file(file_path)
 
     def _read_log_file(self, file_path):
-        """Read new content from log files"""
         try:
             if file_path not in self.monitored_files:
                 self.monitored_files[file_path] = 0
@@ -80,13 +76,9 @@ class TrainingManager:
         self.log_queue = queue.Queue()
         self.is_training = False
         self.stop_flag = False
-        # Add persistent log storage, limit max lines to prevent memory overflow
-        self.log_history = deque(maxlen=2000)  # Keep maximum 2000 log entries
-        self.log_lock = threading.Lock()  # For thread-safe log operations
-        # Add training type identifier
-        self.current_training_type = None  # 'main', 'diff', or None
-
-        # Diffusion model log monitoring related
+        self.log_history = deque(maxlen=2000)
+        self.log_lock = threading.Lock()
+        self.current_training_type = None
         self.diffusion_log_observer = None
         self.diffusion_log_handler = None
         self.diffusion_log_paths = [
@@ -97,30 +89,24 @@ class TrainingManager:
         ]
 
     def add_log(self, message):
-        """Add log to history (thread-safe)"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] {message}"
-
         with self.log_lock:
             self.log_history.append(formatted_message)
             self.log_queue.put(formatted_message)
 
     def add_diffusion_log(self, message):
-        """Add diffusion model specific log"""
         timestamp = datetime.now().strftime("%H:%M:%S")
         formatted_message = f"[{timestamp}] 🌊 {message}"
-
         with self.log_lock:
             self.log_history.append(formatted_message)
             self.log_queue.put(formatted_message)
 
     def get_all_logs(self):
-        """Get all historical logs"""
         with self.log_lock:
             return "\n".join(self.log_history)
 
     def get_new_logs(self):
-        """Get new logs (without clearing history)"""
         new_logs = []
         while not self.log_queue.empty():
             try:
@@ -130,10 +116,8 @@ class TrainingManager:
         return new_logs
 
     def clear_logs(self):
-        """Clear log history"""
         with self.log_lock:
             self.log_history.clear()
-            # Clear remaining logs in queue
             while not self.log_queue.empty():
                 try:
                     self.log_queue.get_nowait()
@@ -141,13 +125,11 @@ class TrainingManager:
                     break
 
     def setup_diffusion_monitoring(self):
-        """Setup diffusion model log file monitoring"""
         try:
             if self.diffusion_log_observer is None:
                 self.diffusion_log_handler = DiffusionLogHandler(self)
                 self.diffusion_log_observer = Observer()
 
-                # Monitor possible log directories
                 for log_path in self.diffusion_log_paths:
                     if os.path.exists(log_path):
                         self.diffusion_log_observer.schedule(
@@ -159,17 +141,13 @@ class TrainingManager:
 
                 self.diffusion_log_observer.start()
                 self.add_log("🔍 Diffusion model log file monitoring started")
-
-                # Also setup Python log interception
                 self.setup_python_log_capture()
 
         except Exception as e:
             self.add_log(f"Error setting up diffusion monitoring: {str(e)}")
 
     def setup_python_log_capture(self):
-        """Setup Python log capture to monitor specific modules"""
         try:
-            # Create custom log handler
             class DiffusionLogCaptureHandler(logging.Handler):
                 def __init__(self, training_manager):
                     super().__init__()
@@ -177,7 +155,6 @@ class TrainingManager:
 
                 def emit(self, record):
                     try:
-                        # Check if log record is from target modules
                         if any(target in record.pathname for target in
                                ['diffusion/logger/saver.py', 'diffusion/solver.py', 'saver.py', 'solver.py']):
 
@@ -191,24 +168,19 @@ class TrainingManager:
 
                             self.training_manager.add_diffusion_log(log_message)
                     except Exception:
-                        pass  # Avoid exceptions in log handling affecting training
+                        pass
 
-            # Add to root logger
             diffusion_handler = DiffusionLogCaptureHandler(self)
             diffusion_handler.setLevel(logging.DEBUG)
-
-            # Get root logger and add handler
             root_logger = logging.getLogger()
             root_logger.addHandler(diffusion_handler)
             root_logger.setLevel(logging.DEBUG)
-
             self.add_log("🎯 Python log interceptor setup, monitoring saver.py and solver.py")
 
         except Exception as e:
             self.add_log(f"Error setting up Python log capture: {str(e)}")
 
     def stop_diffusion_monitoring(self):
-        """Stop diffusion model log monitoring"""
         try:
             if self.diffusion_log_observer:
                 self.diffusion_log_observer.stop()
@@ -220,7 +192,6 @@ class TrainingManager:
             self.add_log(f"Error stopping diffusion monitoring: {str(e)}")
 
     def read_output(self, process, log_queue):
-        """Read process output and put into queue"""
         while True:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
@@ -228,7 +199,6 @@ class TrainingManager:
             if output:
                 log_message = output.strip()
 
-                # Process logs based on training type
                 if self.current_training_type == 'diff':
                     log_message = f"[TRAIN_DIFF] {log_message}"
                 elif self.current_training_type == 'main':
@@ -239,7 +209,6 @@ class TrainingManager:
                 self.add_log(log_message)
 
     def run_command(self, cmd, cwd=None):
-        """Run command and output logs in real time"""
         try:
             self.add_log(f"Executing command: {cmd}")
 
@@ -250,10 +219,9 @@ class TrainingManager:
                 universal_newlines=True,
                 shell=True,
                 cwd=cwd,
-                env=dict(os.environ, PYTHONUNBUFFERED='1')  # Ensure Python output is not buffered
+                env=dict(os.environ, PYTHONUNBUFFERED='1')
             )
 
-            # Start thread to read output
             thread = threading.Thread(target=self.read_output, args=(self.current_process, self.log_queue))
             thread.daemon = True
             thread.start()
@@ -272,26 +240,19 @@ class TrainingManager:
             return False
 
     def stop_training(self):
-        """Stop training process"""
         if self.current_process:
             try:
                 self.add_log("Stopping training process...")
 
-                # Get process and all its child processes
                 parent = psutil.Process(self.current_process.pid)
                 children = parent.children(recursive=True)
 
-                # Terminate all child processes
                 for child in children:
                     child.terminate()
 
-                # Terminate parent process
                 parent.terminate()
-
-                # Wait for processes to end
                 gone, still_alive = psutil.wait_procs(children + [parent], timeout=5)
 
-                # Force kill if processes are still alive
                 for p in still_alive:
                     p.kill()
 
@@ -303,7 +264,6 @@ class TrainingManager:
                 self.is_training = False
                 self.stop_flag = True
                 self.current_training_type = None
-                # If it's diffusion model training, stop monitoring
                 if self.current_training_type == 'diff':
                     self.stop_diffusion_monitoring()
 
@@ -312,11 +272,9 @@ training_manager = TrainingManager()
 
 
 def get_available_models():
-    """Get available model files"""
     models = []
     model_extensions = ['.pth', '.pt']
 
-    # Search in logs directory and subdirectories
     for root, dirs, files in os.walk('./logs'):
         for file in files:
             if any(file.endswith(ext) for ext in model_extensions) and 'G_' in file:
@@ -326,14 +284,11 @@ def get_available_models():
 
 
 def get_available_configs():
-    """Get available config files"""
     configs = []
 
-    # Search for config.json files
     if os.path.exists('./configs/config.json'):
         configs.append('./configs/config.json')
 
-    # Search in logs directory for other configs
     for root, dirs, files in os.walk('./logs'):
         for file in files:
             if file == 'config.json':
@@ -343,10 +298,7 @@ def get_available_configs():
 
 
 def get_available_diffusion_models():
-    """Get available diffusion model files"""
     models = []
-
-    # Common diffusion model paths
     diffusion_paths = [
         './logs/44k/diffusion',
         './logs/diffusion',
@@ -364,17 +316,13 @@ def get_available_diffusion_models():
 
 
 def get_available_diffusion_configs():
-    """Get available diffusion config files"""
     configs = []
-
     if os.path.exists('./configs/diffusion.yaml'):
         configs.append('./configs/diffusion.yaml')
-
     return sorted(configs) if configs else ["No diffusion config files found"]
 
 
 def get_speakers_from_config(config_path):
-    """Extract speaker list from config file"""
     try:
         if not config_path or not os.path.exists(config_path):
             return ["No config selected"]
@@ -389,7 +337,6 @@ def get_speakers_from_config(config_path):
 
 
 def check_dataset_structure(dataset_path):
-    """Check dataset structure"""
     if not os.path.exists(dataset_path):
         return False, "Dataset path does not exist"
 
@@ -410,7 +357,6 @@ def check_dataset_structure(dataset_path):
 
 
 def resample_audio(dataset_raw_path, dataset_44k_path, skip_loudnorm, progress=gr.Progress()):
-    """Resample audio"""
     training_manager.stop_flag = False
     progress(0, desc="Starting resample...")
 
@@ -429,7 +375,6 @@ def resample_audio(dataset_raw_path, dataset_44k_path, skip_loudnorm, progress=g
 
 
 def preprocess_config(dataset_44k_path, speech_encoder, vol_aug, tiny_model, progress=gr.Progress()):
-    """Generate configuration file"""
     training_manager.stop_flag = False
     progress(0, desc="Generating config file...")
 
@@ -442,7 +387,6 @@ def preprocess_config(dataset_44k_path, speech_encoder, vol_aug, tiny_model, pro
     success = training_manager.run_command(cmd)
 
     if success:
-        # Read generated config file information
         if os.path.exists("configs/config.json"):
             with open("configs/config.json", "r") as f:
                 config = json.load(f)
@@ -456,7 +400,6 @@ def preprocess_config(dataset_44k_path, speech_encoder, vol_aug, tiny_model, pro
 
 
 def extract_features(dataset_44k_path, f0_predictor, use_diff, num_processes, device, progress=gr.Progress()):
-    """Extract features"""
     training_manager.stop_flag = False
     progress(0, desc="Extracting features...")
 
@@ -478,7 +421,6 @@ def extract_features(dataset_44k_path, f0_predictor, use_diff, num_processes, de
 
 
 def start_training(model_name, use_ascend, progress=gr.Progress()):
-    """Start training"""
     if training_manager.is_training:
         return "⚠️ Training already in progress", training_manager.get_all_logs()
 
@@ -486,11 +428,9 @@ def start_training(model_name, use_ascend, progress=gr.Progress()):
     training_manager.stop_flag = False
     training_manager.current_training_type = 'main'
 
-    # Ensure model directory exists
     model_dir = f"logs/{model_name}"
     os.makedirs(model_dir, exist_ok=True)
 
-    # Build training command according to README
     if use_ascend:
         cmd = f"python train_ascend.py -c configs/config.json -m {model_name}"
     else:
@@ -518,7 +458,6 @@ def start_training(model_name, use_ascend, progress=gr.Progress()):
 
 
 def start_diff_training(use_ascend, progress=gr.Progress()):
-    """Start diffusion model training"""
     if training_manager.is_training:
         return "⚠️ Training already in progress", training_manager.get_all_logs()
 
@@ -526,7 +465,6 @@ def start_diff_training(use_ascend, progress=gr.Progress()):
     training_manager.stop_flag = False
     training_manager.current_training_type = 'diff'
 
-    # Check if config file exists
     config_path = "configs/diffusion.yaml"
     if not os.path.exists(config_path):
         training_manager.add_log(f"❌ Config file does not exist: {config_path}")
@@ -535,7 +473,6 @@ def start_diff_training(use_ascend, progress=gr.Progress()):
         training_manager.current_training_type = None
         return "❌ Config file does not exist", training_manager.get_all_logs()
 
-    # Build training command according to README
     if use_ascend:
         cmd = f"python train_diff_ascend.py -c configs/diffusion.yaml"
     else:
@@ -546,7 +483,6 @@ def start_diff_training(use_ascend, progress=gr.Progress()):
         training_manager.add_log(f"Using device: {'Ascend NPU' if use_ascend else 'NVIDIA GPU'}")
         training_manager.add_log(f"Diffusion model will be saved to: logs/44k/diffusion")
 
-        # Setup diffusion model specific log monitoring
         training_manager.setup_diffusion_monitoring()
         training_manager.add_log(f"🔍 Started capturing output from diffusion/logger/saver.py and diffusion/solver.py")
         training_manager.add_log(f"Starting diffusion model training process...")
@@ -555,7 +491,6 @@ def start_diff_training(use_ascend, progress=gr.Progress()):
         training_manager.is_training = False
         training_manager.current_training_type = None
 
-        # Stop log monitoring
         training_manager.stop_diffusion_monitoring()
 
         if success:
@@ -571,57 +506,43 @@ def start_diff_training(use_ascend, progress=gr.Progress()):
 
 
 def run_inference(
-        # Model settings
         model_path, uploaded_model, config_path, uploaded_config,
-        # Audio settings
         input_audio, uploaded_audio,
-        # Basic settings
         trans, speaker,
-        # Advanced settings
         clip_duration, linear_gradient, f0_predictor, auto_predict_f0,
-        # Diffusion settings
+        slice_db, device_selection, noise_scale, pad_seconds, wav_format,
+        linear_gradient_retain, enhancer_adaptive_key, f0_filter_threshold,
         use_diffusion, diffusion_model_path, uploaded_diff_model,
         diffusion_config_path, uploaded_diff_config, k_step, only_diffusion, second_encoding,
-        # Enhancement settings
         enhance, cluster_model_path, cluster_infer_ratio, feature_retrieval,
-        # Mix settings
         use_spk_mix, loudness_envelope_adjustment,
         progress=gr.Progress()
 ):
-    """Run voice conversion inference - 修正版本 with download support"""
-
     training_manager.current_training_type = 'inference'
     training_manager.add_log("🎤 Starting voice conversion inference...")
 
-    # Ensure raw directory exists
     os.makedirs("raw", exist_ok=True)
     os.makedirs("results", exist_ok=True)
 
-    # Handle model file
     final_model_path = model_path
     if uploaded_model and uploaded_model.name:
         final_model_path = uploaded_model.name
         training_manager.add_log(f"Using uploaded model: {os.path.basename(uploaded_model.name)}")
 
-    # Handle config file
     final_config_path = config_path
     if uploaded_config and uploaded_config.name:
         final_config_path = uploaded_config.name
         training_manager.add_log(f"Using uploaded config: {os.path.basename(uploaded_config.name)}")
 
-    # Handle input audio
     input_audio_path = None
     if uploaded_audio and uploaded_audio.name:
-        # Copy uploaded audio to raw directory
         audio_filename = os.path.basename(uploaded_audio.name)
         input_audio_path = os.path.join("raw", audio_filename)
         shutil.copy(uploaded_audio.name, input_audio_path)
         training_manager.add_log(f"Using uploaded audio: {audio_filename}")
     elif input_audio:
-        # Handle recorded audio
         audio_filename = "recorded_audio.wav"
         input_audio_path = os.path.join("raw", audio_filename)
-        # Save recorded audio
         import soundfile as sf
         sf.write(input_audio_path, input_audio[1], input_audio[0])
         training_manager.add_log(f"Using recorded audio saved as: {audio_filename}")
@@ -631,7 +552,6 @@ def run_inference(
         training_manager.add_log(error_msg)
         return None, gr.File(visible=False), error_msg
 
-    # Validation
     if not final_model_path or final_model_path == "No models found" or not os.path.exists(final_model_path):
         error_msg = "❌ Model file not found"
         training_manager.add_log(error_msg)
@@ -642,12 +562,10 @@ def run_inference(
         training_manager.add_log(error_msg)
         return None, gr.File(visible=False), error_msg
 
-    # Build inference command
     audio_name = os.path.splitext(os.path.basename(input_audio_path))[0]
 
     cmd = f'python inference_main.py -m "{final_model_path}" -c "{final_config_path}" -n "{audio_name}" -t {trans} -s "{speaker}"'
 
-    # Add advanced parameters
     if clip_duration > 0:
         cmd += f" -cl {clip_duration}"
     if linear_gradient > 0:
@@ -657,7 +575,21 @@ def run_inference(
     if auto_predict_f0:
         cmd += " -a"
 
-    # Enhancement settings
+    cmd += f" -sd {slice_db}"
+
+    if device_selection != "auto":
+        cmd += f" -d {device_selection}"
+
+    cmd += f" -ns {noise_scale}"
+    cmd += f" -p {pad_seconds}"
+    cmd += f" -wf {wav_format}"
+    cmd += f" -lgr {linear_gradient_retain}"
+
+    if enhancer_adaptive_key != 0:
+        cmd += f" -eak {enhancer_adaptive_key}"
+
+    cmd += f" -ft {f0_filter_threshold}"
+
     if enhance:
         cmd += " -eh"
     if cluster_model_path and cluster_model_path.strip():
@@ -667,24 +599,17 @@ def run_inference(
     if feature_retrieval:
         cmd += " -fr"
 
-    # Speaker mixing settings
     if use_spk_mix:
         cmd += " -usm"
     if loudness_envelope_adjustment < 1.0:
         cmd += f" -lea {loudness_envelope_adjustment}"
 
-    # Force output format to wav for better webui compatibility
-    cmd += " -wf wav"
-
-    # Diffusion settings
     if use_diffusion:
-        # Handle diffusion model path
         final_diffusion_model_path = diffusion_model_path
         if uploaded_diff_model and uploaded_diff_model.name:
             final_diffusion_model_path = uploaded_diff_model.name
             training_manager.add_log(f"Using uploaded diffusion model: {os.path.basename(uploaded_diff_model.name)}")
 
-        # Handle diffusion config path
         final_diffusion_config_path = diffusion_config_path
         if uploaded_diff_config and uploaded_diff_config.name:
             final_diffusion_config_path = uploaded_diff_config.name
@@ -698,7 +623,7 @@ def run_inference(
                 final_diffusion_config_path):
             cmd += f' -dc "{final_diffusion_config_path}"'
 
-        cmd += " -shd"  # Enable shallow diffusion
+        cmd += " -shd"
         cmd += f" -ks {k_step}"
 
         if only_diffusion:
@@ -706,7 +631,6 @@ def run_inference(
         if second_encoding:
             cmd += " -se"
 
-    # Special handling for whisper-ppg encoder
     try:
         with open(final_config_path, 'r') as f:
             config = json.load(f)
@@ -724,62 +648,47 @@ def run_inference(
     training_manager.add_log(f"   Audio: {os.path.basename(input_audio_path)}")
     training_manager.add_log(f"   Speaker: {speaker}")
     training_manager.add_log(f"   Pitch shift: {trans}")
+    training_manager.add_log(
+        f"   Audio processing: slice_db={slice_db}, noise_scale={noise_scale}, pad_seconds={pad_seconds}")
+    training_manager.add_log(f"   Output format: {wav_format}")
     if use_diffusion:
         training_manager.add_log(f"   Using diffusion model with {k_step} steps")
 
-    # Run inference
     def inference_thread():
         nonlocal cmd
         success = training_manager.run_command(cmd)
         training_manager.current_training_type = None
         return success
 
-    # Run inference in thread for better UI responsiveness
     success = inference_thread()
 
     if success:
-        # Construct expected filename based on inference_main.py logic
-        # Format: {clean_name}_{key}_{spk}{cluster_name}_{isdiffusion}_{f0p}.{wav_format}
-
-        # Determine key
         key = "auto" if auto_predict_f0 else f"{trans}key"
-
-        # Determine cluster name
         cluster_name = "" if cluster_infer_ratio == 0 else f"_{cluster_infer_ratio}"
-
-        # Determine diffusion type
         isdiffusion = "sovits"
         if use_diffusion:
             if only_diffusion:
                 isdiffusion = "diff"
             else:
                 isdiffusion = "sovdiff"
-
-        # Determine speaker name
         final_speaker = "spk_mix" if use_spk_mix else speaker
-
-        # Construct expected filename
-        expected_filename = f"{audio_name}_{key}_{final_speaker}{cluster_name}_{isdiffusion}_{f0_predictor}.wav"
+        expected_filename = f"{audio_name}_{key}_{final_speaker}{cluster_name}_{isdiffusion}_{f0_predictor}.{wav_format}"
         expected_filepath = os.path.join("results", expected_filename)
 
         training_manager.add_log(f"🔍 Looking for output file: {expected_filename}")
 
-        # First try the exact expected path
         if os.path.exists(expected_filepath):
             training_manager.add_log(f"✅ Found output file: {expected_filename}")
             training_manager.add_log(f"📥 File available for download: {expected_filename}")
             return expected_filepath, gr.File(value=expected_filepath,
                                               visible=True), f"✅ Voice conversion completed! Output: {expected_filename}"
 
-        # If not found, try pattern matching for more flexibility
         results_dir = "results"
-
-        # Build multiple possible patterns
         patterns = [
-            f"{audio_name}_*_{final_speaker}*_{isdiffusion}_{f0_predictor}.wav",
-            f"{audio_name}_*_{final_speaker}*_{isdiffusion}_*.wav",
-            f"{audio_name}_*_{final_speaker}*.wav",
-            f"{audio_name}_*.wav"
+            f"{audio_name}_*_{final_speaker}*_{isdiffusion}_{f0_predictor}.{wav_format}",
+            f"{audio_name}_*_{final_speaker}*_{isdiffusion}_*.{wav_format}",
+            f"{audio_name}_*_{final_speaker}*.{wav_format}",
+            f"{audio_name}*.{wav_format}"
         ]
 
         output_files = []
@@ -792,7 +701,6 @@ def run_inference(
                 break
 
         if output_files:
-            # Sort by modification time, get the newest one
             output_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
             output_file = output_files[0]
             training_manager.add_log(f"🎵 Using output file: {os.path.basename(output_file)}")
@@ -800,7 +708,6 @@ def run_inference(
             return output_file, gr.File(value=output_file,
                                         visible=True), f"✅ Voice conversion completed! Output: {os.path.basename(output_file)}"
 
-        # If still not found, list all files in results directory for debugging
         try:
             all_files = os.listdir(results_dir)
             training_manager.add_log(f"📂 All files in results directory: {all_files}")
@@ -817,7 +724,6 @@ def run_inference(
 
 
 def stop_training():
-    """Stop training"""
     if not training_manager.is_training:
         training_manager.add_log("⚠️ No training currently in progress")
         return "⚠️ No training currently in progress", training_manager.get_all_logs()
@@ -827,53 +733,43 @@ def stop_training():
 
 
 def stop_training_main():
-    """Stop main model training"""
     return stop_training()
 
 
 def stop_training_diff():
-    """Stop diffusion model training"""
     return stop_training()
 
 
 def update_logs():
-    """Update log display - return complete historical logs"""
     return training_manager.get_all_logs()
 
 
 def update_logs_with_scroll():
-    """Update log display and trigger scroll"""
     logs = training_manager.get_all_logs()
-    # Add some statistics for debugging
     log_count = len(training_manager.log_history)
     if log_count > 0:
-        # Output debug info to browser console
         print(f"[DEBUG] Updating logs: {log_count} total logs")
-    return logs, logs, logs, logs  # Return to four different log display areas
+    return logs, logs, logs, logs
 
 
 def force_update_diff_logs():
-    """Force update diffusion model logs"""
     logs = training_manager.get_all_logs()
     print(f"[DEBUG] Force updating diffusion model logs: {len(logs)} characters")
     return logs
 
 
 def clear_logs():
-    """Clear logs"""
     training_manager.clear_logs()
     return ""
 
 
 def test_diffusion_monitoring():
-    """Test diffusion model monitoring functionality"""
     training_manager.setup_diffusion_monitoring()
     training_manager.add_log("🧪 Diffusion model monitoring test started")
     training_manager.add_log("📝 Now will capture output from saver.py and solver.py")
     return "🧪 Test monitoring started", training_manager.get_all_logs()
 
 
-# Create Gradio interface
 with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     gr.Markdown("""
     # So-VITs-SVC-Fix WebUI
@@ -887,7 +783,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     """)
 
     with gr.Tabs():
-        # Data preprocessing tab
         with gr.TabItem("📁 Data Preprocessing"):
             with gr.Row():
                 with gr.Column():
@@ -967,7 +862,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                     check_dataset_btn = gr.Button("🔍 Check Dataset Structure")
                     dataset_info = gr.Textbox(label="Dataset Information", lines=3, interactive=False)
 
-            # Preprocessing log area
             gr.Markdown("---")
             gr.Markdown("### 📊 Preprocessing Logs")
             with gr.Row():
@@ -983,7 +877,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 info="Shows real-time logs for resampling, config generation, and feature extraction"
             )
 
-        # Training configuration tab
         with gr.TabItem("⚙️ Main Model Training"):
             gr.Markdown("""
             ### Main Model Training
@@ -1021,7 +914,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
 
             train_status = gr.Textbox(label="Training Status", interactive=False)
 
-            # Main model training log area
             gr.Markdown("---")
             gr.Markdown("### 📊 Training Logs")
             with gr.Row():
@@ -1037,7 +929,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 info="Shows real-time logs and progress for main model training"
             )
 
-        # Diffusion model training tab
         with gr.TabItem("🌊 Diffusion Model Training"):
             gr.Markdown("""
             ### Diffusion Model Training (Optional)
@@ -1058,7 +949,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                         info="Use Huawei Ascend card for training"
                     )
 
-                    # Add test button
                     test_monitor_btn = gr.Button("🧪 Test Monitoring", variant="secondary")
 
                 with gr.Column():
@@ -1084,7 +974,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
 
             diff_train_status = gr.Textbox(label="Training Status", interactive=False)
 
-            # Diffusion model training log area
             gr.Markdown("---")
             gr.Markdown("### 📊 Diffusion Model Training Logs")
             with gr.Row():
@@ -1100,7 +989,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 info="Shows complete diffusion model training logs, including directly captured saver.py and solver.py output"
             )
 
-        # Inference tab
         with gr.TabItem("🎤 Voice Conversion Inference"):
             gr.Markdown("""
             ### Voice Conversion Inference
@@ -1111,7 +999,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 with gr.Column():
                     gr.Markdown("#### 🎯 Model Selection")
 
-                    # Model settings
                     with gr.Group():
                         gr.Markdown("**Main Model**")
                         inf_model_path = gr.Dropdown(
@@ -1138,13 +1025,11 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                             file_types=[".json"]
                         )
 
-                    # Refresh model lists
                     refresh_models_btn = gr.Button("🔄 Refresh Model Lists", variant="secondary")
 
                 with gr.Column():
                     gr.Markdown("#### 🎵 Audio Input")
 
-                    # Audio input
                     with gr.Group():
                         inf_input_audio = gr.Audio(
                             label="Record Audio",
@@ -1160,7 +1045,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 with gr.Column():
                     gr.Markdown("#### ⚙️ Basic Settings")
 
-                    # Basic settings
                     inf_trans = gr.Slider(
                         label="Pitch Shift (semitones)",
                         minimum=-24,
@@ -1211,14 +1095,88 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                         info="⚠️ Don't use for singing voice conversion"
                     )
 
-            # Diffusion model settings
+            with gr.Row():
+                with gr.Column():
+                    gr.Markdown("#### 🎚️ Audio Processing Settings")
+
+                    inf_slice_db = gr.Slider(
+                        label="Audio Slice Threshold (dB)",
+                        minimum=-60,
+                        maximum=-10,
+                        value=-40,
+                        step=1,
+                        info="Audio slicing level threshold. -30 for noisy audio, -50 to retain breath sounds"
+                    )
+
+                    inf_device_selection = gr.Dropdown(
+                        label="Inference Device",
+                        choices=["auto", "cpu", "cuda:0", "cuda:1"],
+                        value="auto",
+                        info="Device for inference, auto for automatic selection"
+                    )
+
+                    inf_noise_scale = gr.Slider(
+                        label="Noise Scale",
+                        minimum=0.0,
+                        maximum=1.0,
+                        value=0.4,
+                        step=0.01,
+                        info="Affects pronunciation and audio quality, somewhat mystical parameter"
+                    )
+
+                    inf_pad_seconds = gr.Slider(
+                        label="Padding Seconds",
+                        minimum=0.0,
+                        maximum=2.0,
+                        value=0.5,
+                        step=0.1,
+                        info="Add silence padding to avoid artifacts at beginning/end"
+                    )
+
+                with gr.Column():
+                    gr.Markdown("#### 📁 Output & Processing Settings")
+
+                    inf_wav_format = gr.Dropdown(
+                        label="Output Audio Format",
+                        choices=["wav", "flac", "mp3"],
+                        value="flac",
+                        info="Output audio file format"
+                    )
+
+                    inf_linear_gradient_retain = gr.Slider(
+                        label="Linear Gradient Retain Ratio",
+                        minimum=0.0,
+                        maximum=1.0,
+                        value=0.75,
+                        step=0.01,
+                        info="Cross-fade length retention ratio for auto-sliced audio"
+                    )
+
+                    inf_enhancer_adaptive_key = gr.Slider(
+                        label="Enhancer Adaptive Key (semitones)",
+                        minimum=-12,
+                        maximum=12,
+                        value=0,
+                        step=1,
+                        info="Make enhancer adapt to higher pitch ranges"
+                    )
+
+                    inf_f0_filter_threshold = gr.Slider(
+                        label="F0 Filter Threshold",
+                        minimum=0.0,
+                        maximum=1.0,
+                        value=0.05,
+                        step=0.01,
+                        info="Only effective when using CREPE. Lower values reduce off-key probability but may increase muted sounds"
+                    )
+
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("#### 🌊 Diffusion Model Settings")
 
                     inf_use_diffusion = gr.Checkbox(
                         label="Use Diffusion Model",
-                        value=True,
+                        value=False,
                         info="Enable diffusion model for better quality"
                     )
 
@@ -1271,7 +1229,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                         info="Re-encode audio before diffusion (experimental)"
                     )
 
-            # Enhancement and mixing settings
             with gr.Row():
                 with gr.Column():
                     gr.Markdown("#### 🔊 Enhancement Settings")
@@ -1321,7 +1278,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                         info="1.0 = use output envelope, 0.0 = use input envelope"
                     )
 
-            # Inference controls
             gr.Markdown("---")
             with gr.Row():
                 inference_btn = gr.Button("🚀 Start Voice Conversion", variant="primary", scale=3)
@@ -1329,7 +1285,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
 
             inference_status = gr.Textbox(label="Inference Status", interactive=False)
 
-            # Output audio with download option
             with gr.Row():
                 with gr.Column():
                     output_audio = gr.Audio(
@@ -1343,7 +1298,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                         visible=False
                     )
 
-            # Inference logs
             gr.Markdown("### 📊 Inference Logs")
             with gr.Row():
                 inference_refresh_btn = gr.Button("🔄 Refresh Logs", scale=1)
@@ -1358,17 +1312,14 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
                 info="Shows real-time logs for voice conversion process"
             )
 
-    # Bind event handlers - add scroll JS
     scroll_js = """
     setTimeout(() => {
         ['preprocess_log_display', 'train_log_display', 'diff_log_display', 'inference_log_display'].forEach(id => {
             const textarea = document.querySelector('#' + id + ' textarea');
             if (textarea) {
                 textarea.scrollTop = textarea.scrollHeight;
-                // Extra handling for diffusion model log area
                 if (id === 'diff_log_display') {
                     console.log('Scrolling diff_log_display to bottom');
-                    // Multiple attempts to ensure scrolling succeeds
                     setTimeout(() => {
                         textarea.scrollTop = textarea.scrollHeight;
                     }, 100);
@@ -1381,7 +1332,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     }, 200);
     """
 
-    # Preprocessing related events
     resample_btn.click(
         resample_audio,
         inputs=[dataset_raw_path, dataset_44k_path, skip_loudnorm],
@@ -1409,7 +1359,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         outputs=[dataset_info]
     )
 
-    # Main model training related events
     train_btn.click(
         start_training,
         inputs=[model_name, use_ascend],
@@ -1423,7 +1372,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         js=scroll_js
     )
 
-    # Diffusion model training related events
     diff_train_btn.click(
         start_diff_training,
         inputs=[diff_use_ascend],
@@ -1437,7 +1385,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         js=scroll_js
     )
 
-    # Test monitoring functionality
     test_monitor_btn.click(
         test_diffusion_monitoring,
         outputs=[diff_train_status, diff_log_display],
@@ -1445,7 +1392,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     )
 
 
-    # Inference related events
     def refresh_all_lists():
         return (
             gr.Dropdown(choices=get_available_models(),
@@ -1467,7 +1413,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
     )
 
 
-    # Update speaker list when config changes
     def update_speakers(config_path):
         return gr.Dropdown(choices=get_speakers_from_config(config_path))
 
@@ -1478,7 +1423,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         outputs=[inf_speaker]
     )
 
-    # Main inference function - 使用修正后的版本
     inference_btn.click(
         run_inference,
         inputs=[
@@ -1486,6 +1430,8 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
             inf_input_audio, inf_uploaded_audio,
             inf_trans, inf_speaker,
             inf_clip_duration, inf_linear_gradient, inf_f0_predictor, inf_auto_predict_f0,
+            inf_slice_db, inf_device_selection, inf_noise_scale, inf_pad_seconds, inf_wav_format,
+            inf_linear_gradient_retain, inf_enhancer_adaptive_key, inf_f0_filter_threshold,
             inf_use_diffusion, inf_diffusion_model_path, inf_uploaded_diff_model,
             inf_diffusion_config_path, inf_uploaded_diff_config, inf_k_step, inf_only_diffusion, inf_second_encoding,
             inf_enhance, inf_cluster_model_path, inf_cluster_infer_ratio, inf_feature_retrieval,
@@ -1495,7 +1441,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         js=scroll_js
     )
 
-    # Log refresh and clear events - handle different areas separately
     preprocess_refresh_btn.click(
         lambda: training_manager.get_all_logs(),
         outputs=[preprocess_log_display],
@@ -1536,7 +1481,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         outputs=[inference_log_display]
     )
 
-    # Timer to update all log display areas
     log_timer = gr.Timer(value=0.8, active=True)
     log_timer.tick(
         update_logs_with_scroll,
@@ -1544,7 +1488,6 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         js=scroll_js
     )
 
-    # Add dedicated timer for diffusion model
     diff_timer = gr.Timer(value=1.0, active=True)
     diff_timer.tick(
         force_update_diff_logs,
@@ -1555,16 +1498,14 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
             if (textarea) {
                 console.log('[DIFF] Force updating diffusion model log area');
                 textarea.scrollTop = textarea.scrollHeight;
-                // Trigger redraw
                 textarea.style.display = 'none';
-                textarea.offsetHeight; // Trigger reflow
+                textarea.offsetHeight;
                 textarea.style.display = '';
             }
         }, 100);
         """
     )
 
-    # Add custom CSS to ensure auto-scroll
     app.css = """
     #preprocess_log_display textarea, 
     #train_log_display textarea, 
@@ -1577,14 +1518,12 @@ with gr.Blocks(title="So-VITs-SVC-Fix WebUI") as app:
         scroll-behavior: smooth;
     }
 
-    /* Ensure log areas auto-scroll to bottom */
     .log-container {
         position: relative;
     }
     """
 
 if __name__ == "__main__":
-    # Ensure necessary directories exist
     os.makedirs("dataset_raw", exist_ok=True)
     os.makedirs("dataset/44k", exist_ok=True)
     os.makedirs("configs", exist_ok=True)
@@ -1592,7 +1531,6 @@ if __name__ == "__main__":
     os.makedirs("raw", exist_ok=True)
     os.makedirs("results", exist_ok=True)
 
-    # Launch WebUI
     app.launch(
         server_name="0.0.0.0",
         server_port=7860,

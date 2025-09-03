@@ -2,8 +2,11 @@ ffmpeg-python
 psutil
 Flask
 Flask_Cors
-gradio>=3.7.0
-numpy==1.23.5
+gradio>=5.31.0
+gradio-client==1.12.1
+h11==0.16.0
+httpcore==1.0.9
+httpx==0.28.1numpy==1.23.5
 pyworld==0.3.2
 scipy==1.10.0
 SoundFile==0.12.1
