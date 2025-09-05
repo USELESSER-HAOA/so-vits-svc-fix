@@ -10,7 +10,7 @@
 2. Badly support to Gloo on the Windows.
 3. Upgraded the Python version to 3.10.6.
 4. Supported Ascend NPU training (Some Warnings & Not High Performance).
-5. Fixed webUI (Training supported,infer coming soon).
+5. Fixed webUI.
 
 # Training
 
